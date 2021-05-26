@@ -3,18 +3,15 @@ from splinter import Browser
 from bs4 import BeautifulSoup as soup
 import pandas as pd
 import datetime as dt
-import re
-from time import sleep 
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 def scrape_all():
     # Initiate headless driver for deployment
-    executable_path = {'executable_path': 'chromedriver'}
-    browser = Browser('chrome', executable_path="chromedriver", headless=True)
+    executable_path = {'executable_path': ChromeDriverManager().install()}
+    browser = Browser('chrome', **executable_path, headless=True)
 
     news_title, news_paragraph = mars_news(browser)
-
-    hemisphere_image_urls=hemisphere(browser)
 
     # Run all scraping functions and store results in a dictionary
     data = {
@@ -22,8 +19,8 @@ def scrape_all():
         "news_paragraph": news_paragraph,
         "featured_image": featured_image(browser),
         "facts": mars_facts(),
-        "hemispheres": hemisphere_image_urls,
-        "last_modified": dt.datetime.now()
+        "last_modified": dt.datetime.now(),
+        "hemispheres": hemispheres(browser)
     }
 
     # Stop webdriver and return data
@@ -68,10 +65,6 @@ def featured_image(browser):
     full_image_elem = browser.find_by_tag('button')[1]
     full_image_elem.click()
 
-    browser.is_element_present_by_text('more info', wait_time=1)
-    more_info_elem = browser.links.find_by_partial_text('more info')
-    more_info_elem.click()
-
     # Parse the resulting html with soup
     html = browser.html
     img_soup = soup(html, 'html.parser')
@@ -90,13 +83,15 @@ def featured_image(browser):
     return img_url
 
 def mars_facts():
+    df = pd.DataFrame()
     # Add try/except for error handling
     try:
         # Use 'read_html' to scrape the facts table into a dataframe
         df = pd.read_html('https://galaxyfacts-mars.com')[0]
 
     except BaseException:
-     return 
+        df = pd.read_html('https://galaxyfacts-mars.com')[0]
+        return df.to_html(classes="table table-striped")
 
     # Assign columns and set index of dataframe
     df.columns=['Description', 'Mars', 'Earth']
@@ -104,37 +99,31 @@ def mars_facts():
 
     # Convert dataframe into HTML format, add bootstrap
     return df.to_html(classes="table table-striped")
-
-def hemisphere(browser):
-    url='https://astrogeology.usgs.gov/search/results?q=hemisphere+enhanced&k1=target&v1=Mars'
+def hemispheres(browser):
+    # 1. Use browser to visit the URL 
+    url = 'https://marshemispheres.com/'
     browser.visit(url)
 
-
+    # 2. Create a list to hold the images and titles.
     hemisphere_image_urls = []
 
-    imgs_links= browser.find_by_css("a.product-item h3")
-
-    for x in range(len(imgs_links)):
-        hemisphere={}
-
-        # Find elements going to click link 
-        browser.find_by_css("a.product-item h3")[x].click()
-
-        # Find sample Image link
-        sample_img= browser.find_link_by_text("Sample").first
-        hemisphere['img_url']=sample_img['href']
-
-        # Get hemisphere Title
-        hemisphere['title']=browser.find_by_css("h2.title").text
-
-        #Add Objects to hemisphere_img_urls list
-        hemisphere_image_urls.append(hemisphere)
-
-        # Go Back
+    items = browser.find_by_css('a.product-item h3')
+    # 3. Write code to retrieve the image urls and titles for each hemisphere.
+    for i in range(4):
+        #create empty dictionary
+        hemispheres = {}
+        browser.find_by_css('a.product-item h3')[i].click()
+        element = browser.find_link_by_text('Sample').first
+        img_url = element['href']
+        title = browser.find_by_css("h2.title").text
+        hemispheres["img_url"] = img_url
+        hemispheres["title"] = title
+        hemisphere_image_urls.append(hemispheres)
         browser.back()
     return hemisphere_image_urls
 
-if __name__== "__main__":
-    # If running as script, print scrapped data
+if __name__ == "__main__":
+
+    # If running as script, print scraped data
     print(scrape_all())
 
